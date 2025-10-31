@@ -1,0 +1,340 @@
+Function SyllBreton(sText As String) As String
+    SyllBreton = SyllBretonAvecSep(sText, "-")
+End Function
+
+Function SyllBretonAvecSep(sText As String, sepOut As String) As String
+    If sText = "" Then
+        SyllBretonAvecSep = ""
+        Exit Function
+    End If
+    
+    sText = LCase(Trim(sText))
+    sText = Replace(sText, ",", "")
+    sText = Replace(sText, ";", "")
+    sText = Replace(sText, ":", "")
+    sText = Replace(sText, "!", "")
+    sText = Replace(sText, "?", "")
+    sText = Replace(sText, "—", " ")
+    sText = Replace(sText, "–", " ")
+
+    Dim vowelDig As Variant, ambigI As Variant, consDig As Variant, onsets As Variant
+    vowelDig = Array("eü", "ai", "au", "ei", "ou", "eu", "oa", "oe", "oi", "oua", "oue")
+    ambigI = Array("ia", "ie", "ii", "io", "iu")
+    consDig = Array("c'h", "ch", "zh")
+    onsets = Array("skl", "skr", "gw", "pl", "bl", "tr", "dr", "kr", "gr", "pr", "br", "fr", "vr", "fl", "gl", "sk", "st", "sp", "sm", "kl")
+
+    Dim words As Variant, outWords() As String
+    words = Split(sText, " ")
+    ReDim outWords(LBound(words) To UBound(words))
+    
+    Dim wi As Long
+    For wi = LBound(words) To UBound(words)
+        Dim w As String
+        w = Trim(words(wi))
+        If w = "" Then
+            outWords(wi) = ""
+        Else
+            Dim parts As Variant, partResults() As String
+            parts = Split(w, "'")
+            ReDim partResults(LBound(parts) To UBound(parts))
+            Dim partIdx As Long
+            For partIdx = LBound(parts) To UBound(parts)
+                Dim part As String
+                part = parts(partIdx)
+                If part = "" Then
+                    partResults(partIdx) = ""
+                Else
+                    Dim toks As Variant, vpos() As Long, vcount As Long, t As Long
+                    toks = TokenizeWord(part, consDig, vowelDig, ambigI)
+                    vcount = 0
+                    For t = LBound(toks) To UBound(toks)
+                        If IsVowelToken(toks(t), vowelDig, ambigI) Then
+                            ReDim Preserve vpos(0 To vcount)
+                            vpos(vcount) = t
+                            vcount = vcount + 1
+                        End If
+                    Next t
+                    If vcount = 0 Then
+                        partResults(partIdx) = part
+                    Else
+                        Dim sylls() As String
+                        Dim sCount As Long: sCount = 0
+                        Dim vi As Long
+                        For vi = 0 To vcount - 1
+                            Dim vIndex As Long, syll As String, cStart As Long, cEnd As Long, numC As Long
+                            vIndex = vpos(vi)
+                            syll = toks(vIndex)
+                            If vi = 0 Then
+                                cStart = 0
+                            Else
+                                cStart = vpos(vi - 1) + 1
+                            End If
+                            cEnd = vIndex - 1
+                            If cEnd >= cStart Then
+                                numC = cEnd - cStart + 1
+                                If numC = 2 Then
+                                    Dim two As String
+                                    two = toks(cStart) & toks(cStart + 1)
+                                    If Not IsInArray(two, onsets) Then
+                                        If sCount > 0 Then
+                                            sylls(sCount - 1) = sylls(sCount - 1) & toks(cStart)
+                                        Else
+                                            syll = toks(cStart) & syll
+                                        End If
+                                    End If
+                                ElseIf numC > 2 Then
+                                    Dim allocate As Long: allocate = 0
+                                    Dim tryLen As Long
+                                    For tryLen = numC To 1 Step -1
+                                        Dim jstart As Long, cand As String, jj As Long
+                                        jstart = cStart + numC - tryLen
+                                        cand = ""
+                                        For jj = jstart To cEnd
+                                            cand = cand & toks(jj)
+                                        Next jj
+                                        If IsInArray(cand, onsets) Then
+                                            allocate = tryLen
+                                            Exit For
+                                        End If
+                                    Next tryLen
+                                    If allocate > 0 Then
+                                        Dim kk As Long
+                                        For kk = cStart To cEnd - allocate
+                                            If sCount > 0 Then
+                                                sylls(sCount - 1) = sylls(sCount - 1) & toks(kk)
+                                            Else
+                                                syll = toks(kk) & syll
+                                            End If
+                                        Next kk
+                                    Else
+                                        Dim kk2 As Long
+                                        For kk2 = cStart To cEnd - 1
+                                            If sCount > 0 Then
+                                                sylls(sCount - 1) = sylls(sCount - 1) & toks(kk2)
+                                            Else
+                                                syll = toks(kk2) & syll
+                                            End If
+                                        Next kk2
+                                    End If
+                                End If
+                            End If
+                            Dim onsetStr As String: onsetStr = ""
+                            Dim p As Long
+                            p = vIndex - 1
+                            Do While p >= 0
+                                If IsVowelToken(toks(p), vowelDig, ambigI) Then Exit Do
+                                onsetStr = toks(p) & onsetStr
+                                If Len(onsetStr) > 4 Then Exit Do
+                                p = p - 1
+                            Loop
+                            syll = onsetStr & syll
+                            If sCount = 0 Then
+                                ReDim sylls(0)
+                                sylls(0) = syll
+                                sCount = 1
+                            Else
+                                ReDim Preserve sylls(sCount)
+                                sylls(sCount) = syll
+                                sCount = sCount + 1
+                            End If
+                        Next vi
+
+                        Dim lastTok As Long
+                        Dim trailingStart As Long
+                        lastTok = UBound(toks)
+                        trailingStart = vpos(vcount - 1) + 1
+                        If trailingStart <= lastTok Then
+                            Dim tt As Long
+                            For tt = trailingStart To lastTok
+                                sylls(sCount - 1) = sylls(sCount - 1) & toks(tt)
+                            Next tt
+                        End If
+
+                        Dim accentIdx As Long
+                        If UBound(sylls) + 1 <= 1 Then
+                            accentIdx = 1
+                        Else
+                            accentIdx = UBound(sylls)
+                        End If
+
+                        Dim si As Long, ambi As Long, ambToken As String, posAmb As Long
+                        For si = 0 To UBound(sylls)
+                            Dim sstr As String
+                            sstr = sylls(si)
+                            For ambi = LBound(ambigI) To UBound(ambigI)
+                                ambToken = ambigI(ambi)
+                                posAmb = InStr(sstr, ambToken)
+                                If posAmb > 0 Then
+                                    If (si + 1) = accentIdx Then
+                                        Dim leftPart As String, rightPart As String
+                                        leftPart = Left(sstr, posAmb)
+                                        rightPart = Mid(sstr, posAmb + 2)
+                                        Dim newS() As String
+                                        ReDim newS(UBound(sylls) + 1)
+                                        Dim idxOld As Long, idxNew As Long
+                                        idxNew = 0
+                                        For idxOld = 0 To si - 1
+                                            newS(idxNew) = sylls(idxOld)
+                                            idxNew = idxNew + 1
+                                        Next idxOld
+                                        newS(idxNew) = Left(sstr, posAmb)
+                                        idxNew = idxNew + 1
+                                        If Len(Mid(sstr, posAmb + 1)) > 0 Then
+                                            newS(idxNew) = Mid(sstr, posAmb + 1)
+                                            idxNew = idxNew + 1
+                                        End If
+                                        For idxOld = si + 1 To UBound(sylls)
+                                            newS(idxNew) = sylls(idxOld)
+                                            idxNew = idxNew + 1
+                                        Next idxOld
+                                        ReDim Preserve newS(idxNew - 1)
+                                        sylls = newS
+                                    End If
+                                End If
+                            Next ambi
+                        Next si
+                        Dim resPart As String
+                        resPart = ""
+                        Dim kk3 As Long
+                        For kk3 = 0 To UBound(sylls)
+                            If kk3 > 0 Then resPart = resPart & sepOut
+                            resPart = resPart & sylls(kk3)
+                        Next kk3
+                        partResults(partIdx) = resPart
+                    End If
+                End If
+            Next partIdx
+            
+            Dim joined As String
+            joined = ""
+            Dim pi As Long
+            For pi = LBound(partResults) To UBound(partResults)
+                If pi > LBound(partResults) Then joined = joined & "'"
+                joined = joined & partResults(pi)
+            Next pi
+            
+            outWords(wi) = joined
+        End If
+    Next wi
+    
+    Dim finalOut As String
+    finalOut = ""
+    Dim wi2 As Long
+    For wi2 = LBound(outWords) To UBound(outWords)
+        If outWords(wi2) <> "" Then
+            If finalOut <> "" Then finalOut = finalOut & " "
+            finalOut = finalOut & outWords(wi2)
+        End If
+    Next wi2
+    
+    SyllBretonAvecSep = finalOut
+End Function
+
+Function IsInArray(val As String, arr As Variant) As Boolean
+    Dim i As Long
+    If Not IsArray(arr) Then
+        IsInArray = False
+        Exit Function
+    End If
+    For i = LBound(arr) To UBound(arr)
+        If arr(i) = val Then
+            IsInArray = True
+            Exit Function
+        End If
+    Next i
+    IsInArray = False
+End Function
+
+Function IsVowelToken(tok As String, vowelDig As Variant, ambigI As Variant) As Boolean
+    Dim i As Long
+    For i = LBound(vowelDig) To UBound(vowelDig)
+        If tok = vowelDig(i) Then IsVowelToken = True : Exit Function
+    Next i
+    For i = LBound(ambigI) To UBound(ambigI)
+        If tok = ambigI(i) Then IsVowelToken = True : Exit Function
+    Next i
+    If Len(tok) = 1 Then
+        If InStr("aeiouyàâéèêëïôùüû", tok) > 0 Then IsVowelToken = True : Exit Function
+    End If
+    IsVowelToken = False
+End Function
+
+Function TokenizeWord(w As String, consDig As Variant, vowelDig As Variant, ambigI As Variant) As Variant
+    Dim toks() As String
+    If IsNull(w) Or w = "" Then
+        TokenizeWord = Array()
+        Exit Function
+    End If
+    Dim pos As Long
+    Dim three As String, two As String, one As String
+    Dim found As Boolean
+    Dim i As Long
+    pos = 1
+    ReDim toks(0)
+    Do While pos <= Len(w)
+        three = ""
+        two = ""
+        one = Mid(w, pos, 1)
+        If pos <= Len(w) - 2 Then three = Mid(w, pos, 3)
+        If pos <= Len(w) - 1 Then two = Mid(w, pos, 2)
+        
+        If three = "c'h" Then
+            toks(UBound(toks)) = three
+            ReDim Preserve toks(UBound(toks) + 1)
+            pos = pos + 3
+            GoTo NextLoop
+        End If
+        
+        found = False
+        
+        If two <> "" Then
+            For i = LBound(consDig) To UBound(consDig)
+                If two = consDig(i) Then
+                    toks(UBound(toks)) = two
+                    ReDim Preserve toks(UBound(toks) + 1)
+                    pos = pos + 2
+                    found = True
+                    Exit For
+                End If
+            Next i
+            If found Then GoTo NextLoop
+        End If
+        
+        If pos <= Len(w) - 1 Then
+            two = Mid(w, pos, 2)
+            For i = LBound(vowelDig) To UBound(vowelDig)
+                If two = vowelDig(i) Then
+                    toks(UBound(toks)) = two
+                    ReDim Preserve toks(UBound(toks) + 1)
+                    pos = pos + 2
+                    found = True
+                    Exit For
+                End If
+            Next i
+            If found Then GoTo NextLoop
+        End If
+        
+        If pos <= Len(w) - 1 Then
+            two = Mid(w, pos, 2)
+            For i = LBound(ambigI) To UBound(ambigI)
+                If two = ambigI(i) Then
+                    toks(UBound(toks)) = two
+                    ReDim Preserve toks(UBound(toks) + 1)
+                    pos = pos + 2
+                    found = True
+                    Exit For
+                End If
+            Next i
+            If found Then GoTo NextLoop
+        End If
+        
+        toks(UBound(toks)) = one
+        ReDim Preserve toks(UBound(toks) + 1)
+        pos = pos + 1
+NextLoop:
+    Loop
+    If toks(UBound(toks)) = "" Then
+        ReDim Preserve toks(UBound(toks) - 1)
+    End If
+    TokenizeWord = toks
+End Function
